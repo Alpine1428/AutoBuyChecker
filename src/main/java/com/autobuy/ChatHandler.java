@@ -10,9 +10,7 @@ public class ChatHandler {
     private static String lastProcessedNick = null;
     private static long lastProcessedTime = 0;
 
-    // ИСПРАВЛЕННО: Ищем любую группу символов (без пробелов), которая стоит ПЕРЕД "купил"
     private static final Pattern BUY_PATTERN = Pattern.compile("(\\S+)\\s+купил[аи]?\\s+у\\s+вас\\s+\\[.+?\\]\\s+x\\d+\\s+за\\s+[\\d\\s,.]+[¤$€₽]?");
-    
     private static final Pattern FIND_PATTERN = Pattern.compile("Игрок\\s+\\S+\\s+находится\\s+на\\s+сервере\\s+(\\S+)");
     private static final Pattern L2ANARCHY_PATTERN = Pattern.compile("^l2anarchy(\\d*)$");
     private static final Pattern LANARCHY_PATTERN = Pattern.compile("^lanarchy(\\d*)$");
@@ -21,7 +19,7 @@ public class ChatHandler {
     public static void enable() { 
         enabled = true; 
         state = 0; 
-        sendClientMessage("§a[AutoBuy] Включен! Непрерывный мониторинг чата."); 
+        sendClientMessage("§a[AutoBuy] Включен! Ожидаю покупки..."); 
     }
     
     public static void disable() { 
@@ -34,24 +32,28 @@ public class ChatHandler {
         if (!enabled || rawMessage == null) return;
         String clean = rawMessage.replaceAll("§[0-9a-fk-orA-FK-OR]", "").trim();
 
-        // 1. ИСПРАВЛЕННО: ВСЕГДА слушаем сообщения о покупках (решает проблему с остановкой работы)
+        // 1. Обработка сообщения о покупке
         Matcher mBuy = BUY_PATTERN.matcher(clean);
         if (mBuy.find()) {
             String nick = mBuy.group(1);
             long now = System.currentTimeMillis();
             
-            // Кулдаун 5 секунд (чтобы не было спама, если сообщения дублируются)
             if (nick.equals(lastProcessedNick) && (now - lastProcessedTime) < 5000) return;
             lastProcessedNick = nick; 
             lastProcessedTime = now;
             
-            sendClientMessage("§e[AutoBuy] Покупка от: §b" + nick);
+            // --- КОПИРОВАНИЕ В БУФЕР ОБМЕНА ---
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc != null && mc.keyboard != null) {
+                mc.execute(() -> mc.keyboard.setClipboard(nick));
+            }
             
-            // Начинаем цепочку
+            sendClientMessage("§e[AutoBuy] Покупка от: §b" + nick + " §7(Ник скопирован)");
+            
+            // Запускаем цепочку команд
             scheduleCmd("/hm spy " + nick, 300, () -> {
-                state = 1; // Переходим в ожидание ответа /find
+                state = 1; 
                 scheduleCmd("/find " + nick, 1200, () -> {
-                    // АНТИ-ЗАВИСАНИЕ: Если сервер не ответит на /find за 5 секунд, мы сбросим статус
                     new Thread(() -> {
                         try { Thread.sleep(5000); } catch (Exception ignored) {}
                         if (state == 1) state = 0;
@@ -61,7 +63,7 @@ public class ChatHandler {
             return;
         }
 
-        // 2. Если мы сейчас ждем ответ от /find
+        // 2. Обработка ответа от /find
         if (state == 1) {
             Matcher mFind = FIND_PATTERN.matcher(clean);
             if (mFind.find()) {
@@ -71,7 +73,7 @@ public class ChatHandler {
                     sendClientMessage("§a[AutoBuy] Переход: §b" + cmd);
                     scheduleCmd(cmd, 500, null);
                 }
-                state = 0; // Сбрасываем стейт (готов к следующей покупке)
+                state = 0;
             }
         }
     }
