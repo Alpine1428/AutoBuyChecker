@@ -10,7 +10,9 @@ public class ChatHandler {
     private static String lastProcessedNick = null;
     private static long lastProcessedTime = 0;
 
-    private static final Pattern BUY_PATTERN = Pattern.compile("(\\S+)\\s+купил[аи]?\\s+у\\s+вас\\s+\\[.+?\\]\\s+x\\d+\\s+за\\s+[\\d\\s,.]+[¤$€₽]?");
+    // Идеальный паттерн: ищет ник перед словом "купил", и любое название предмета (со скобками или без)
+    private static final Pattern BUY_PATTERN = Pattern.compile("^.*?([^\\s]+)\\s+купил[аи]?\\s+у\\s+вас\\s+(.+?)\\s+x\\d+\\s+за\\s+[\\d\\s,.]+[¤$€₽]?");
+    
     private static final Pattern FIND_PATTERN = Pattern.compile("Игрок\\s+\\S+\\s+находится\\s+на\\s+сервере\\s+(\\S+)");
     private static final Pattern L2ANARCHY_PATTERN = Pattern.compile("^l2anarchy(\\d*)$");
     private static final Pattern LANARCHY_PATTERN = Pattern.compile("^lanarchy(\\d*)$");
@@ -30,7 +32,7 @@ public class ChatHandler {
 
     public static void onChatMessage(String rawMessage) {
         if (!enabled || rawMessage == null) return;
-        String clean = rawMessage.replaceAll("§[0-9a-fk-orA-FK-OR]", "").trim();
+        String clean = rawMessage.replaceAll("§[0-9a-fk-orA-FK-ORlmnkLMNK]", "").trim();
 
         // 1. Обработка сообщения о покупке
         Matcher mBuy = BUY_PATTERN.matcher(clean);
@@ -42,7 +44,7 @@ public class ChatHandler {
             lastProcessedNick = nick; 
             lastProcessedTime = now;
             
-            // --- КОПИРОВАНИЕ В БУФЕР ОБМЕНА ---
+            // Копирование ника в буфер обмена
             MinecraftClient mc = MinecraftClient.getInstance();
             if (mc != null && mc.keyboard != null) {
                 mc.execute(() -> mc.keyboard.setClipboard(nick));
@@ -50,13 +52,13 @@ public class ChatHandler {
             
             sendClientMessage("§e[AutoBuy] Покупка от: §b" + nick + " §7(Ник скопирован)");
             
-            // Запускаем цепочку команд
+            // Запускаем цепочку команд: /hm spy -> /find
             scheduleCmd("/hm spy " + nick, 300, () -> {
                 state = 1; 
                 scheduleCmd("/find " + nick, 1200, () -> {
                     new Thread(() -> {
                         try { Thread.sleep(5000); } catch (Exception ignored) {}
-                        if (state == 1) state = 0;
+                        if (state == 1) state = 0; // Сброс, если нет ответа
                     }).start();
                 });
             });
