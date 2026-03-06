@@ -7,7 +7,6 @@ import java.util.regex.Pattern;
 public class ChatHandler {
     private static boolean enabled = false;
     private static int state = 0;
-    private static String currentNick = null;
     private static String lastProcessedNick = null;
     private static long lastProcessedTime = 0;
 
@@ -19,10 +18,6 @@ public class ChatHandler {
 
     public static void enable() { enabled = true; state = 0; sendClientMessage("§a[AutoBuy] Включен!"); }
     public static void disable() { enabled = false; state = 0; sendClientMessage("§c[AutoBuy] Выключен!"); }
-    
-    public static void sendStatus() {
-        sendClientMessage("§e[AutoBuy] Статус: " + (enabled ? "§aВкл" : "§cВыкл") + " | Стейт: " + state);
-    }
 
     public static void onChatMessage(String rawMessage) {
         if (!enabled || rawMessage == null) return;
@@ -34,7 +29,7 @@ public class ChatHandler {
                 String nick = m.group(1);
                 long now = System.currentTimeMillis();
                 if (nick.equals(lastProcessedNick) && (now - lastProcessedTime) < 5000) return;
-                lastProcessedNick = nick; lastProcessedTime = now; currentNick = nick;
+                lastProcessedNick = nick; lastProcessedTime = now;
                 sendClientMessage("§e[AutoBuy] Покупка от: §b" + nick);
                 scheduleCmd("/hm spy " + nick, 300, () -> {
                     state = 1;
@@ -46,11 +41,8 @@ public class ChatHandler {
             if (m.find()) {
                 String srv = m.group(1).trim().toLowerCase();
                 String cmd = buildCmd(srv);
-                if (cmd != null) {
-                    sendClientMessage("§a[AutoBuy] Переход: §b" + cmd);
-                    scheduleCmd(cmd, 500, null);
-                }
-                state = 0; currentNick = null;
+                if (cmd != null) scheduleCmd(cmd, 500, null);
+                state = 0;
             }
         }
     }

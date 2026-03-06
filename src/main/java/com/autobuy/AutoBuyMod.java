@@ -11,7 +11,6 @@ public class AutoBuyMod implements ClientModInitializer {
                 ClientCommandManager.literal("autob")
                     .then(ClientCommandManager.literal("on").executes(ctx -> { ChatHandler.enable(); return 1; }))
                     .then(ClientCommandManager.literal("off").executes(ctx -> { ChatHandler.disable(); return 1; }))
-                    .then(ClientCommandManager.literal("status").executes(ctx -> { ChatHandler.sendStatus(); return 1; }))
             );
         });
     }
