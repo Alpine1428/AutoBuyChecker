@@ -10,39 +10,68 @@ public class ChatHandler {
     private static String lastProcessedNick = null;
     private static long lastProcessedTime = 0;
 
-    private static final Pattern BUY_PATTERN = Pattern.compile("^.{0,5}\\s*(\\S+)\\s+купил[аи]?\\s+у\\s+вас\\s+\\[.+?\\]\\s+x\\d+\\s+за\\s+[\\d\\s,.]+[¤$€₽]?");
+    // ИСПРАВЛЕННО: Ищем любую группу символов (без пробелов), которая стоит ПЕРЕД "купил"
+    private static final Pattern BUY_PATTERN = Pattern.compile("(\\S+)\\s+купил[аи]?\\s+у\\s+вас\\s+\\[.+?\\]\\s+x\\d+\\s+за\\s+[\\d\\s,.]+[¤$€₽]?");
+    
     private static final Pattern FIND_PATTERN = Pattern.compile("Игрок\\s+\\S+\\s+находится\\s+на\\s+сервере\\s+(\\S+)");
     private static final Pattern L2ANARCHY_PATTERN = Pattern.compile("^l2anarchy(\\d*)$");
     private static final Pattern LANARCHY_PATTERN = Pattern.compile("^lanarchy(\\d*)$");
     private static final Pattern ANARCHY_PATTERN = Pattern.compile("^anarchy(\\d*)$");
 
-    public static void enable() { enabled = true; state = 0; sendClientMessage("§a[AutoBuy] Включен!"); }
-    public static void disable() { enabled = false; state = 0; sendClientMessage("§c[AutoBuy] Выключен!"); }
+    public static void enable() { 
+        enabled = true; 
+        state = 0; 
+        sendClientMessage("§a[AutoBuy] Включен! Непрерывный мониторинг чата."); 
+    }
+    
+    public static void disable() { 
+        enabled = false; 
+        state = 0; 
+        sendClientMessage("§c[AutoBuy] Выключен!"); 
+    }
 
     public static void onChatMessage(String rawMessage) {
         if (!enabled || rawMessage == null) return;
         String clean = rawMessage.replaceAll("§[0-9a-fk-orA-FK-OR]", "").trim();
 
-        if (state == 0) {
-            Matcher m = BUY_PATTERN.matcher(clean);
-            if (m.find()) {
-                String nick = m.group(1);
-                long now = System.currentTimeMillis();
-                if (nick.equals(lastProcessedNick) && (now - lastProcessedTime) < 5000) return;
-                lastProcessedNick = nick; lastProcessedTime = now;
-                sendClientMessage("§e[AutoBuy] Покупка от: §b" + nick);
-                scheduleCmd("/hm spy " + nick, 300, () -> {
-                    state = 1;
-                    scheduleCmd("/find " + nick, 1200, null);
+        // 1. ИСПРАВЛЕННО: ВСЕГДА слушаем сообщения о покупках (решает проблему с остановкой работы)
+        Matcher mBuy = BUY_PATTERN.matcher(clean);
+        if (mBuy.find()) {
+            String nick = mBuy.group(1);
+            long now = System.currentTimeMillis();
+            
+            // Кулдаун 5 секунд (чтобы не было спама, если сообщения дублируются)
+            if (nick.equals(lastProcessedNick) && (now - lastProcessedTime) < 5000) return;
+            lastProcessedNick = nick; 
+            lastProcessedTime = now;
+            
+            sendClientMessage("§e[AutoBuy] Покупка от: §b" + nick);
+            
+            // Начинаем цепочку
+            scheduleCmd("/hm spy " + nick, 300, () -> {
+                state = 1; // Переходим в ожидание ответа /find
+                scheduleCmd("/find " + nick, 1200, () -> {
+                    // АНТИ-ЗАВИСАНИЕ: Если сервер не ответит на /find за 5 секунд, мы сбросим статус
+                    new Thread(() -> {
+                        try { Thread.sleep(5000); } catch (Exception ignored) {}
+                        if (state == 1) state = 0;
+                    }).start();
                 });
-            }
-        } else if (state == 1) {
-            Matcher m = FIND_PATTERN.matcher(clean);
-            if (m.find()) {
-                String srv = m.group(1).trim().toLowerCase();
+            });
+            return;
+        }
+
+        // 2. Если мы сейчас ждем ответ от /find
+        if (state == 1) {
+            Matcher mFind = FIND_PATTERN.matcher(clean);
+            if (mFind.find()) {
+                String srv = mFind.group(1).trim().toLowerCase();
                 String cmd = buildCmd(srv);
-                if (cmd != null) scheduleCmd(cmd, 500, null);
-                state = 0;
+                if (cmd != null) {
+                    sendClientMessage("§a[AutoBuy] Переход: §b" + cmd);
+                    scheduleCmd(cmd, 500, null);
+                }
+                state = 0; // Сбрасываем стейт (готов к следующей покупке)
             }
         }
     }
@@ -64,10 +93,12 @@ public class ChatHandler {
         new Thread(() -> {
             try { Thread.sleep(ms); } catch (Exception ignored) {}
             MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc != null && mc.player != null) mc.execute(() -> {
-                if(cmd.startsWith("/")) mc.getNetworkHandler().sendCommand(cmd.substring(1));
-                else mc.getNetworkHandler().sendChatMessage(cmd);
-            });
+            if (mc != null && mc.player != null && cmd != null && !cmd.isEmpty()) {
+                mc.execute(() -> {
+                    if(cmd.startsWith("/")) mc.getNetworkHandler().sendCommand(cmd.substring(1));
+                    else mc.getNetworkHandler().sendChatMessage(cmd);
+                });
+            }
             if (cb != null) {
                 try { Thread.sleep(400); } catch (Exception ignored) {}
                 if (mc != null) mc.execute(cb);
