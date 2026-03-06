@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "autobuy",
+  "version": "${version}",
+  "name": "AutoBuy Checker",
+  "description": "AutoBuy Tracker & Teleport",
+  "authors": ["Alpine1428"],
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.autobuy.AutoBuyMod"]
+  },
+  "mixins": ["autobuy.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}
